@@ -1,5 +1,5 @@
 {
-  "name": "untitled",
+  "name": "whatsapp-bot",
   "version": "1.0.0",
   "main": "bot.js",
   "scripts": {
@@ -20,6 +20,7 @@
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "rimraf": "^6.0.1",
-    "whatsapp-web.js": "^1.26.0"
+    "whatsapp-web.js": "latest",
+    "puppeteer-core": "^21.5.0"
   }
 }
