@@ -1,0 +1,5 @@
+node_modules/
+.local-chromium/
+**/chrome-linux/
+.env
+.DS_Store
