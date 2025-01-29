@@ -20,7 +20,6 @@
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "rimraf": "^6.0.1",
-    "whatsapp-web.js": "latest",
-    "puppeteer-core": "^21.5.0"
+    "whatsapp-web.js": "latest"
   }
 }
