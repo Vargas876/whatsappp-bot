@@ -3,11 +3,12 @@ const qrcode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 
+// Configuración de rutas y estados
 const QR_PATH = path.join(__dirname, 'qr-code.png');
 let isClientReady = false;
 let isBotActive = true;
 
-// Set para búsqueda O(1)
+// Set de números objetivo para búsqueda O(1)
 const targetNumbers = new Set([
     '573225932684@c.us',
     '573108105885@c.us',
@@ -23,8 +24,10 @@ const targetNumbers = new Set([
     '573142126744@c.us'
 ]);
 
+// Configuraciones principales
 const ADMIN_NUMBER = '573228932335@c.us';
 const COOLDOWN_TIME = 35 * 60 * 1000;
+const FAST_RESPONSE = 'V.';
 
 // Caché en memoria para respuestas rápidas
 const responseCache = {
@@ -39,7 +42,7 @@ const responseCache = {
 // Verificación de bloqueo optimizada
 const isSystemBlocked = () => responseCache.isBlocked && Date.now() < responseCache.blockUntil;
 
-// Notificación asíncrona sin esperar respuesta
+// Función para notificaciones al administrador
 const sendNotificationToAdmin = async (message, isGroup, type = 'response') => {
     if (!isClientReady) return;
 
@@ -63,9 +66,11 @@ const sendNotificationToAdmin = async (message, isGroup, type = 'response') => {
     }
 };
 
-// Cliente optimizado para Termux
+// Configuración del cliente para Android
 const client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth({
+        dataPath: 'auth_data'
+    }),
     puppeteer: {
         headless: true,
         executablePath: '/data/data/com.termux/files/usr/bin/chromium',
@@ -73,33 +78,23 @@ const client = new Client({
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
             '--disable-gpu',
+            '--disable-websql',
             '--disable-web-security',
-            '--disable-features=IsolateOrigins',
             '--disable-site-isolation-trials',
             '--no-experiments',
-            '--ignore-gpu-blacklist',
             '--ignore-certificate-errors',
             '--ignore-certificate-errors-spki-list',
-            '--disable-extensions',
-            '--disable-default-apps',
-            '--enable-features=NetworkService',
-            '--no-default-browser-check',
-            '--no-first-run',
-            '--disable-notifications',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-renderer-backgrounding',
-            '--disable-background-networking',
-            '--no-zygote',
-            '--single-process'
+            '--disable-features=IsolateOrigins,site-per-process'
         ]
     }
 });
 
-// Respuesta rápida precompilada
-const FAST_RESPONSE = 'V.';
-
-// Manejador de mensajes optimizado
+// Manejador de mensajes principal
 client.on('message', async (message) => {
     try {
         const senderId = message.from;
@@ -114,11 +109,11 @@ client.on('message', async (message) => {
         if (message.hasQuotedMsg) {
             const quotedMsg = await message.getQuotedMessage();
 
-            // Verificar si el mensaje citado ya existe en el caché de respuestas
+            // Verificar si el mensaje citado ya existe en el caché
             const originalMessageId = quotedMsg.id._serialized;
             const respondedNumbers = responseCache.respondedMessages.get(originalMessageId) || new Set();
 
-            // Si el mensaje ya ha sido respondido por otro número objetivo
+            // Verificar respuestas previas
             if (respondedNumbers.size > 0 && targetNumbers.has(actualSender)) {
                 Object.assign(responseCache, {
                     isBlocked: true,
@@ -130,11 +125,11 @@ client.on('message', async (message) => {
                 return;
             }
 
-            // Agregar el número actual a los números que han respondido
+            // Actualizar caché de respuestas
             respondedNumbers.add(actualSender);
             responseCache.respondedMessages.set(originalMessageId, respondedNumbers);
 
-            // Lógica original de bloqueo por primer respondedor
+            // Lógica de bloqueo por primer respondedor
             if (quotedMsg.fromMe && targetNumbers.has(actualSender)) {
                 if (responseCache.pendingResponses.has(actualSender)) {
                     Object.assign(responseCache, {
@@ -149,9 +144,8 @@ client.on('message', async (message) => {
             return;
         }
 
-        // Respuesta instantánea para primer mensaje
+        // Respuesta rápida para primer mensaje
         if (!responseCache.initialResponses.has(actualSender)) {
-            // Envío inmediato sin esperar confirmación
             Promise.all([
                 message.reply(FAST_RESPONSE),
                 new Promise(resolve => {
@@ -170,7 +164,7 @@ client.on('message', async (message) => {
     }
 });
 
-// Manejo mejorado del código QR
+// Generación del código QR
 client.on('qr', async (qr) => {
     try {
         await qrcode.toFile(QR_PATH, qr, {
@@ -204,15 +198,13 @@ client.on('disconnected', (reason) => {
 // Manejo de errores no capturados
 process.on('uncaughtException', (err) => {
     console.error('Error no capturado:', err);
-    // Mantenemos el bot funcionando
 });
 
 process.on('unhandledRejection', (err) => {
     console.error('Promesa rechazada no manejada:', err);
-    // Mantenemos el bot funcionando
 });
 
-// Cierre limpio
+// Manejo de cierre limpio
 const handleShutdown = () => {
     console.log('🛑 Cerrando bot...');
     client.destroy().finally(() => process.exit(0));
