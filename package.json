@@ -3,11 +3,7 @@
   "version": "1.0.0",
   "main": "bot.js",
   "scripts": {
-    "start": "pm2 start ecosystem.config.js --node-args=\"--no-deprecation\"",
-    "stop": "pm2 stop whatsapp-bot",
-    "restart": "pm2 restart whatsapp-bot",
-    "logs": "pm2 logs whatsapp-bot",
-    "status": "pm2 status whatsapp-bot"
+    "start": "node bot.js"
   },
   "keywords": [],
   "author": "",

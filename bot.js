@@ -1,7 +1,12 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal'); // Cambiamos a qrcode-terminal
-const fs = require('fs');
-const path = require('path');
+const TelegramBot = require('node-telegram-bot-api');
+const qrcode = require('qrcode-terminal');
+
+// Configuración de Telegram
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const AUTHORIZED_USER_ID = process.env.AUTHORIZED_USER_ID;
+const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+
 let isClientReady = false;
 let isBotActive = true;
 
@@ -61,7 +66,7 @@ const sendNotificationToAdmin = async (message, isGroup, type = 'response') => {
     }
 };
 
-// Cliente optimizado con configuración mínima
+// Cliente WhatsApp
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -85,7 +90,7 @@ const client = new Client({
 // Respuesta rápida precompilada
 const FAST_RESPONSE = 'V.';
 
-// Manejador de mensajes optimizado
+// Manejador de mensajes de WhatsApp
 client.on('message', async (message) => {
     try {
         const senderId = message.from;
@@ -156,34 +161,75 @@ client.on('message', async (message) => {
     }
 });
 
-// Eventos optimizados sin bloqueo
+// Evento QR de WhatsApp
 client.on('qr', (qr) => {
     console.log('='.repeat(50));
     console.log('Escanea este código QR en WhatsApp:');
-    qrcode.generate(qr, {small: true}); // Esto mostrará el QR en la terminal
+    qrcode.generate(qr, {small: true});
+
+    // Enviar notificación a Telegram
+    if (TELEGRAM_TOKEN && AUTHORIZED_USER_ID) {
+        telegramBot.sendMessage(AUTHORIZED_USER_ID, '📱 Nuevo código QR generado. Revisa los logs de Render para escanearlo.');
+    }
     console.log('='.repeat(50));
 });
 
+// Eventos de WhatsApp
 client.on('ready', () => {
     isClientReady = true;
-    // Notificación asíncrona
-    setTimeout(() => {
-        client.sendMessage(ADMIN_NUMBER, '🤖 Bot Activo').catch(() => {});
-    }, 0);
+    console.log('WhatsApp Bot listo');
+    if (TELEGRAM_TOKEN && AUTHORIZED_USER_ID) {
+        telegramBot.sendMessage(AUTHORIZED_USER_ID, '🤖 WhatsApp Bot está activo y funcionando');
+    }
 });
 
-// Reconexión optimizada
-client.on('disconnected', () => setTimeout(() => client.initialize(), 0));
-client.on('auth_failure', () => setTimeout(() => client.initialize(), 0));
+// Comandos de Telegram
+telegramBot.onText(/\/status/, (msg) => {
+    if (msg.from.id.toString() !== AUTHORIZED_USER_ID) return;
+    telegramBot.sendMessage(msg.chat.id, '✅ Bot está funcionando');
+});
 
-// Inicio inmediato
+telegramBot.onText(/\/info/, (msg) => {
+    if (msg.from.id.toString() !== AUTHORIZED_USER_ID) return;
+    const info = {
+        isBlocked: isSystemBlocked(),
+        blockTimeRemaining: responseCache.blockUntil ? Math.max(0, (responseCache.blockUntil - Date.now()) / 1000) : 0,
+        lastResponder: responseCache.lastRespondedNumber,
+        activeUsers: responseCache.initialResponses.size
+    };
+    telegramBot.sendMessage(msg.chat.id,
+        `📊 Estado del Bot:\n` +
+        `Bloqueado: ${info.isBlocked ? 'Sí' : 'No'}\n` +
+        `Tiempo restante: ${Math.round(info.blockTimeRemaining)}s\n` +
+        `Último respondedor: ${info.lastResponder || 'Ninguno'}\n` +
+        `Usuarios activos: ${info.activeUsers}`
+    );
+});
+
+// Manejo de errores de WhatsApp
+client.on('disconnected', (reason) => {
+    console.log('Cliente desconectado:', reason);
+    if (TELEGRAM_TOKEN && AUTHORIZED_USER_ID) {
+        telegramBot.sendMessage(AUTHORIZED_USER_ID, '⚠️ Bot de WhatsApp desconectado. Reconectando...');
+    }
+    client.initialize();
+});
+
+// Inicialización
+console.log('Iniciando bot...');
 client.initialize();
-//Tiki
 
-// Cierre limpio y rápido
-const handleShutdown = () => {
-    client.destroy().finally(() => process.exit(0));
-};
+// Manejo de errores globales
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    if (TELEGRAM_TOKEN && AUTHORIZED_USER_ID) {
+        telegramBot.sendMessage(AUTHORIZED_USER_ID, `❌ Error: ${err.message}`);
+    }
+});
 
-process.on('SIGTERM', handleShutdown);
-process.on('SIGINT', handleShutdown);
+process.on('unhandledRejection', (err) => {
+    console.error('Unhandled Rejection:', err);
+    if (TELEGRAM_TOKEN && AUTHORIZED_USER_ID) {
+        telegramBot.sendMessage(AUTHORIZED_USER_ID, `❌ Error: ${err.message}`);
+    }
+});
