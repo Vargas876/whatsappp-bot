@@ -1,9 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode');
+const qrcode = require('qrcode-terminal'); // Cambiamos a qrcode-terminal
 const fs = require('fs');
 const path = require('path');
-
-const QR_PATH = path.join(__dirname, 'qr-code.png');
 let isClientReady = false;
 let isBotActive = true;
 
@@ -160,11 +158,10 @@ client.on('message', async (message) => {
 
 // Eventos optimizados sin bloqueo
 client.on('qr', (qr) => {
-    qrcode.toFile(QR_PATH, qr, {
-        color: { dark: '#000000', light: '#ffffff' },
-        width: 800,
-        margin: 1
-    }).catch(() => {});
+    console.log('='.repeat(50));
+    console.log('Escanea este código QR en WhatsApp:');
+    qrcode.generate(qr, {small: true}); // Esto mostrará el QR en la terminal
+    console.log('='.repeat(50));
 });
 
 client.on('ready', () => {
