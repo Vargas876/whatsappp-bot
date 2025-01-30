@@ -18,7 +18,8 @@ app.listen(port, () => {
 // Configuración de Telegram
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const AUTHORIZED_USER_ID = process.env.AUTHORIZED_USER_ID;
-const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
+
 
 let isClientReady = false;
 let isBotActive = true;
