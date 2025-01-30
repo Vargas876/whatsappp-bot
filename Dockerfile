@@ -1,5 +1,5 @@
-# Usar una imagen base de Node.js
-FROM node:16-slim
+# Usar una imagen base de Node.js más reciente
+FROM node:18-slim
 
 # Instalar dependencias necesarias para Puppeteer/Chrome
 RUN apt-get update && apt-get install -y \
@@ -44,24 +44,30 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Establecer las variables de entorno para Puppeteer
+# Configuración de Puppeteer
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV NODE_ENV=production
 
-# Crear directorio de la aplicación
+# Crear y configurar directorio de la aplicación
 WORKDIR /app
 
-# Copiar package.json y package-lock.json
+# Crear directorio para la sesión de WhatsApp
+RUN mkdir -p /app/.wwebjs_auth && chmod -R 777 /app/.wwebjs_auth
+
+# Copiar archivos del proyecto
 COPY package*.json ./
+RUN npm install --production
 
-# Instalar dependencias
-RUN npm install
-
-# Copiar el resto de los archivos
+# Copiar el código fuente
 COPY . .
 
-# Exponer el puerto si es necesario
+# Configurar permisos
+RUN chown -R node:node /app
+USER node
+
+# Exponer el puerto
 EXPOSE 10000
 
-# Comando para iniciar la aplicación
-CMD ["npm", "start"]
+# Configurar el comando de inicio
+CMD ["node", "bot.js"]
