@@ -3,8 +3,9 @@ const TelegramBot = require('node-telegram-bot-api');
 const qrcode = require('qrcode-terminal');
 
 // Configuración de Telegram
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const AUTHORIZED_USER_ID = process.env.AUTHORIZED_USER_ID;
+const TELEGRAM_TOKEN = '7831188456:AAGWbs2PUSC1E7tSuzBvR_OyoF7f8DKhS8Q';
+// Replace with your Telegram user ID (for security)
+const AUTHORIZED_USER_ID = '5573246970';
 const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
 let isClientReady = false;
