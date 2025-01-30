@@ -90,7 +90,6 @@ client = new Client({
 });
 
 // Eventos de WhatsApp
-/ Reemplaza el evento 'qr' existente con este:
 client.on('qr', async (qr) => {
     console.log('Nuevo código QR generado');
 
