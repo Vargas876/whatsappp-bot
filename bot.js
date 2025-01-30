@@ -1,7 +1,20 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const TelegramBot = require('node-telegram-bot-api');
 const qrcode = require('qrcode-terminal');
+const express = require('express'); // Añadimos Express
+// Configuración de Express
+const app = express();
+const port = process.env.PORT || 3000;
 
+// Ruta básica para health check
+app.get('/', (req, res) => {
+    res.send('Bot is running');
+});
+
+// Iniciar servidor
+app.listen(port, () => {
+    console.log(`Servidor escuchando en puerto ${port}`);
+});
 // Configuración de Telegram
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const AUTHORIZED_USER_ID = process.env.AUTHORIZED_USER_ID;
