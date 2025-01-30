@@ -1,6 +1,6 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const TelegramBot = require('node-telegram-bot-api');
-const qrcode = require('qrcode-terminal');
+const qrcode = require('qrcode');
 const express = require('express');
 
 // Configuración de Express
@@ -90,18 +90,52 @@ client = new Client({
 });
 
 // Eventos de WhatsApp
-client.on('qr', (qr) => {
+/ Reemplaza el evento 'qr' existente con este:
+client.on('qr', async (qr) => {
     console.log('Nuevo código QR generado');
-    console.log('='.repeat(50));
-    console.log('Escanea este código QR en WhatsApp:');
-    qrcode.generate(qr, { small: true });
 
-    // Enviar notificación a Telegram
-    if (telegramBot && AUTHORIZED_USER_ID) {
-        telegramBot.sendMessage(
-            AUTHORIZED_USER_ID,
-            '📱 Nuevo código QR generado. Por favor, revisa los logs para escanearlo.'
-        ).catch(console.error);
+    try {
+        // Generar el QR como una imagen PNG
+        const qrImageBuffer = await qrcode.toBuffer(qr, {
+            type: 'png',
+            margin: 4,
+            width: 512,
+            errorCorrectionLevel: 'H',
+            quality: 1,
+            color: {
+                dark: '#000000',
+                light: '#ffffff'
+            }
+        });
+
+        // Enviar la imagen del QR a Telegram
+        if (telegramBot && AUTHORIZED_USER_ID) {
+            await telegramBot.sendPhoto(
+                AUTHORIZED_USER_ID,
+                qrImageBuffer,
+                {
+                    caption: '📱 Escanea este código QR en WhatsApp Web\n' +
+                        '1. Abre WhatsApp en tu teléfono\n' +
+                        '2. Toca Menú ⚙️ o Ajustes y selecciona "Dispositivos Vinculados"\n' +
+                        '3. Toca "Vincular un dispositivo"\n' +
+                        '4. Apunta tu cámara hacia este código QR'
+                }
+            );
+        }
+
+        // También mostrar enlace para debug en consola
+        console.log('QR Code generado exitosamente');
+        console.log('='.repeat(50));
+
+    } catch (error) {
+        console.error('Error al generar/enviar QR:', error);
+
+        if (telegramBot && AUTHORIZED_USER_ID) {
+            await telegramBot.sendMessage(
+                AUTHORIZED_USER_ID,
+                '❌ Error al generar el código QR. Se intentará generar uno nuevo automáticamente.'
+            );
+        }
     }
 });
 
