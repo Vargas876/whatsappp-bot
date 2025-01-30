@@ -5,7 +5,11 @@ const express = require('express');
 
 // Configuración de Express
 const app = express();
-const port = process.env.PORT || 10000;
+const port = process.env.PORT || 8080;
+
+// Configuración de Telegram
+const TELEGRAM_TOKEN = '7831188456:AAGWbs2PUSC1E7tSuzBvR_OyoF7f8DKhS8Q';
+const AUTHORIZED_USER_ID = '5573246970';
 
 // Variables para gestionar el estado
 let isShuttingDown = false;
@@ -17,7 +21,6 @@ async function cleanup() {
     console.log('Iniciando limpieza...');
     isShuttingDown = true;
 
-    // Cerrar WhatsApp
     if (client) {
         try {
             await client.destroy();
@@ -27,7 +30,6 @@ async function cleanup() {
         }
     }
 
-    // Detener Telegram
     if (telegramBot) {
         try {
             telegramBot.stopPolling();
@@ -38,34 +40,18 @@ async function cleanup() {
     }
 }
 
-// Configuración de Express
-app.get('/', (req, res) => {
-    res.send('Bot is running');
-});
-
-// Iniciar servidor con manejo de errores
-const server = app.listen(port, () => {
-    console.log(`Servidor escuchando en puerto ${port}`);
-}).on('error', (err) => {
-    console.error('Error al iniciar servidor:', err);
-    process.exit(1);
-});
-
-// Configuración de Telegram con manejo de errores
-const TELEGRAM_TOKEN = '7831188456:AAGWbs2PUSC1E7tSuzBvR_OyoF7f8DKhS8Q';
-const AUTHORIZED_USER_ID = '5573246970';
-
+// Inicializar Telegram Bot
 try {
     telegramBot = new TelegramBot(TELEGRAM_TOKEN, {
         polling: true,
-        filepath: false // Deshabilitar almacenamiento de archivos
+        filepath: false
     });
     console.log('Bot de Telegram iniciado');
 } catch (err) {
     console.error('Error al iniciar Telegram:', err);
 }
 
-// Configuración de WhatsApp con opciones optimizadas
+// Crear instancia de WhatsApp
 client = new Client({
     authStrategy: new LocalAuth({
         dataPath: '/app/.wwebjs_auth'
@@ -103,7 +89,59 @@ client = new Client({
     }
 });
 
-// Manejo de señales de terminación
+// Eventos de WhatsApp
+client.on('qr', (qr) => {
+    console.log('Nuevo código QR generado');
+    console.log('='.repeat(50));
+    console.log('Escanea este código QR en WhatsApp:');
+    qrcode.generate(qr, { small: true });
+
+    // Enviar notificación a Telegram
+    if (telegramBot && AUTHORIZED_USER_ID) {
+        telegramBot.sendMessage(
+            AUTHORIZED_USER_ID,
+            '📱 Nuevo código QR generado. Por favor, revisa los logs para escanearlo.'
+        ).catch(console.error);
+    }
+});
+
+client.on('ready', async () => {
+    console.log('WhatsApp Bot conectado exitosamente');
+    if (telegramBot && AUTHORIZED_USER_ID) {
+        await telegramBot.sendMessage(
+            AUTHORIZED_USER_ID,
+            '✅ WhatsApp Bot conectado exitosamente!\n📱 Ya puedes usar el bot en WhatsApp.'
+        ).catch(console.error);
+    }
+});
+
+client.on('disconnected', async (reason) => {
+    console.log('WhatsApp Bot desconectado:', reason);
+    if (telegramBot && AUTHORIZED_USER_ID) {
+        await telegramBot.sendMessage(
+            AUTHORIZED_USER_ID,
+            '⚠️ WhatsApp Bot desconectado. Se generará un nuevo código QR para reconectar.'
+        ).catch(console.error);
+    }
+    if (!isShuttingDown) {
+        client.initialize();
+    }
+});
+
+// Configuración de Express
+app.get('/', (req, res) => {
+    res.send('Bot is running');
+});
+
+// Iniciar servidor
+const server = app.listen(port, () => {
+    console.log(`Servidor escuchando en puerto ${port}`);
+}).on('error', (err) => {
+    console.error('Error al iniciar servidor:', err);
+    process.exit(1);
+});
+
+// Manejo de señales y errores
 process.on('SIGTERM', async () => {
     console.log('Recibida señal SIGTERM');
     await cleanup();
@@ -116,7 +154,6 @@ process.on('SIGINT', async () => {
     process.exit(0);
 });
 
-// Manejo de errores no capturados
 process.on('uncaughtException', async (err) => {
     console.error('Error no capturado:', err);
     await cleanup();
