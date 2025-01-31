@@ -2,7 +2,9 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const TelegramBot = require('node-telegram-bot-api');
 const qrcode = require('qrcode');
 const express = require('express');
-
+// Configuración de Express
+const app = express();
+const port = process.env.PORT || 8080;
 // Configuración de Telegram
 const TELEGRAM_TOKEN = '7831188456:AAGWbs2PUSC1E7tSuzBvR_OyoF7f8DKhS8Q';
 const AUTHORIZED_USER_ID = '5573246970';
