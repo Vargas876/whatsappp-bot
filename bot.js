@@ -3,10 +3,6 @@ const TelegramBot = require('node-telegram-bot-api');
 const qrcode = require('qrcode');
 const express = require('express');
 
-// Configuración de Express
-const app = express();
-const port = process.env.PORT || 8080;
-
 // Configuración de Telegram
 const TELEGRAM_TOKEN = '7831188456:AAGWbs2PUSC1E7tSuzBvR_OyoF7f8DKhS8Q';
 const AUTHORIZED_USER_ID = '5573246970';
@@ -22,37 +18,18 @@ let botStatus = {
     totalMessages: 0
 };
 
-// Función de limpieza
-async function cleanup() {
-    console.log('Iniciando limpieza...');
-    isShuttingDown = true;
-
+// Función para inicializar WhatsApp
+async function initializeWhatsApp() {
+    // Destruir cliente existente si está activo
     if (client) {
         try {
             await client.destroy();
-            console.log('Cliente WhatsApp cerrado');
-            botStatus.whatsappConnected = false;
-        } catch (err) {
-            console.error('Error al cerrar WhatsApp:', err);
+        } catch (destroyErr) {
+            console.error('Error al destruir cliente anterior:', destroyErr);
         }
     }
 
-    if (telegramBot) {
-        try {
-            telegramBot.stopPolling();
-            console.log('Bot de Telegram detenido');
-        } catch (err) {
-            console.error('Error al detener Telegram:', err);
-        }
-    }
-}
-
-// Función para inicializar WhatsApp
-async function initializeWhatsApp() {
-    if (client) {
-        await client.destroy();
-    }
-
+    // Crear nuevo cliente
     client = new Client({
         authStrategy: new LocalAuth({
             dataPath: '/app/.wwebjs_auth'
@@ -63,117 +40,104 @@ async function initializeWhatsApp() {
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--disable-software-rasterizer',
-                '--disable-extensions',
-                '--no-default-browser-check',
-                '--disable-webgl',
-                '--disable-threaded-animation',
-                '--disable-threaded-scrolling',
-                '--disable-in-process-stack-traces',
-                '--disable-histogram-customizer',
-                '--disable-gl-extensions',
-                '--disable-composited-antialiasing',
-                '--disable-canvas-aa',
-                '--disable-3d-apis',
-                '--disable-accelerated-2d-canvas',
-                '--disable-accelerated-jpeg-decoding',
-                '--disable-accelerated-mjpeg-decode',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-breakpad',
-                '--disable-demo-mode',
-                '--disable-gpu-early-init',
-                '--disable-gpu-memory-buffer-compositor-resources',
-                '--disable-gpu-process-crash-limit'
+                '--disable-gpu'
             ],
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null
         }
     });
 
-    // Configurar eventos de WhatsApp
-    setupWhatsAppEvents();
-
-    // Inicializar cliente
-    await client.initialize();
-    botStatus.startTime = new Date();
-    console.log('WhatsApp Bot iniciado');
-}
-
-// Configurar eventos de WhatsApp
-function setupWhatsAppEvents() {
+    // Configurar eventos de escucha
     client.on('qr', async (qr) => {
         console.log('Nuevo código QR generado');
         botStatus.lastQRGenerated = new Date();
 
         try {
+            // Generar imagen QR
             const qrImageBuffer = await qrcode.toBuffer(qr, {
                 type: 'png',
                 margin: 4,
                 width: 512,
-                errorCorrectionLevel: 'H',
-                quality: 1,
-                color: {
-                    dark: '#000000',
-                    light: '#ffffff'
-                }
+                errorCorrectionLevel: 'H'
             });
 
+            // Enviar QR por Telegram si está configurado
             if (telegramBot && AUTHORIZED_USER_ID) {
                 await telegramBot.sendPhoto(
                     AUTHORIZED_USER_ID,
                     qrImageBuffer,
-                    {
-                        caption: '📱 Escanea este código QR en WhatsApp Web\n' +
-                            '1. Abre WhatsApp en tu teléfono\n' +
-                            '2. Toca Menú ⚙️ o Ajustes y selecciona "Dispositivos Vinculados"\n' +
-                            '3. Toca "Vincular un dispositivo"\n' +
-                            '4. Apunta tu cámara hacia este código QR'
-                    }
+                    { caption: '📱 Nuevo código QR generado. Por favor, escanea.' }
                 );
             }
-
-            console.log('QR Code generado exitosamente');
-            console.log('='.repeat(50));
-
-        } catch (error) {
-            console.error('Error al generar/enviar QR:', error);
-            if (telegramBot && AUTHORIZED_USER_ID) {
-                await telegramBot.sendMessage(
-                    AUTHORIZED_USER_ID,
-                    '❌ Error al generar el código QR. Se intentará generar uno nuevo automáticamente.'
-                );
-            }
+        } catch (qrError) {
+            console.error('Error al generar QR:', qrError);
         }
     });
 
-    client.on('ready', async () => {
+    client.on('ready', () => {
+        console.log('✅ WhatsApp cliente está READY');
         botStatus.whatsappConnected = true;
-        console.log('WhatsApp Bot conectado exitosamente');
+
+        // Notificar por Telegram cuando esté listo
         if (telegramBot && AUTHORIZED_USER_ID) {
-            await telegramBot.sendMessage(
+            telegramBot.sendMessage(
                 AUTHORIZED_USER_ID,
-                '✅ WhatsApp Bot conectado exitosamente!\n📱 Ya puedes usar el bot en WhatsApp.'
+                '✅ WhatsApp Bot conectado y listo para usar!'
             ).catch(console.error);
         }
     });
 
-    client.on('message', async (message) => {
-        botStatus.totalMessages++;
-        // Aquí puedes añadir la lógica para procesar mensajes
+    client.on('authenticated', (session) => {
+        console.log('👍 Autenticación completada');
     });
 
-    client.on('disconnected', async (reason) => {
+    client.on('auth_failure', (msg) => {
+        console.error('❌ Fallo de autenticación:', msg);
         botStatus.whatsappConnected = false;
-        console.log('WhatsApp Bot desconectado:', reason);
+
+        // Notificar por Telegram
         if (telegramBot && AUTHORIZED_USER_ID) {
-            await telegramBot.sendMessage(
+            telegramBot.sendMessage(
                 AUTHORIZED_USER_ID,
-                '⚠️ WhatsApp Bot desconectado. Usa /start para reiniciar el bot.'
+                `❌ Fallo de autenticación: ${msg}`
             ).catch(console.error);
         }
     });
-}
 
+    client.on('disconnected', (reason) => {
+        console.log('🔌 WhatsApp desconectado:', reason);
+        botStatus.whatsappConnected = false;
+
+        // Notificar por Telegram
+        if (telegramBot && AUTHORIZED_USER_ID) {
+            telegramBot.sendMessage(
+                AUTHORIZED_USER_ID,
+                `🔌 WhatsApp desconectado: ${reason}`
+            ).catch(console.error);
+        }
+    });
+
+    client.on('message', (msg) => {
+        botStatus.totalMessages++;
+        console.log('📨 Mensaje recibido');
+    });
+
+    try {
+        // Inicializar cliente
+        await client.initialize();
+        console.log('🚀 Cliente WhatsApp inicializado');
+        botStatus.startTime = new Date();
+    } catch (initError) {
+        console.error('❌ Error al inicializar cliente:', initError);
+
+        // Notificar por Telegram
+        if (telegramBot && AUTHORIZED_USER_ID) {
+            telegramBot.sendMessage(
+                AUTHORIZED_USER_ID,
+                `❌ Error al inicializar WhatsApp: ${initError.message}`
+            ).catch(console.error);
+        }
+    }
+}
 // Inicializar Telegram Bot con comandos
 try {
     telegramBot = new TelegramBot(TELEGRAM_TOKEN, {
@@ -289,9 +253,10 @@ process.on('unhandledRejection', async (err) => {
     process.exit(1);
 });
 
-// Inicialización inicial de WhatsApp
-console.log('Iniciando bot...');
+
+// Modificar la inicialización inicial
+console.log('🤖 Iniciando bot...');
 initializeWhatsApp().catch(err => {
-    console.error('Error al inicializar WhatsApp:', err);
+    console.error('❌ Error crítico al inicializar:', err);
     process.exit(1);
 });
