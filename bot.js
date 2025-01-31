@@ -297,23 +297,6 @@ async function initializeWhatsApp() {
 }
 
 
-try {
-        // Inicializar cliente
-        await client.initialize();
-        console.log('🚀 Cliente WhatsApp inicializado');
-        botStatus.startTime = new Date();
-    } catch (initError) {
-        console.error('❌ Error al inicializar cliente:', initError);
-
-        // Notificar por Telegram
-        if (telegramBot && AUTHORIZED_USER_ID) {
-            telegramBot.sendMessage(
-                AUTHORIZED_USER_ID,
-                `❌ Error al inicializar WhatsApp: ${initError.message}`
-            ).catch(console.error);
-        }
-
-}
 // Inicializar Telegram Bot con comandos
 try {
     telegramBot = new TelegramBot(TELEGRAM_TOKEN, {
@@ -395,7 +378,23 @@ try {
 app.get('/', (req, res) => {
     res.send('Bot is running');
 });
-
+// Función de limpieza
+async function cleanup() {
+    isShuttingDown = true;
+    try {
+        if (client) {
+            await client.destroy();
+        }
+        if (telegramBot) {
+            await telegramBot.stopPolling();
+        }
+        if (server) {
+            server.close();
+        }
+    } catch (error) {
+        console.error('Error durante la limpieza:', error);
+    }
+}
 // Iniciar servidor
 const server = app.listen(port, () => {
     console.log(`Servidor escuchando en puerto ${port}`);
