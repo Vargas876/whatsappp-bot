@@ -15,21 +15,36 @@ const AUTHORIZED_USER_ID = '5573246970';
 const ADMIN_NUMBER = '573228932335@c.us';
 const COOLDOWN_TIME = 35 * 60 * 1000;
 
+// Función auxiliar para formatear números
+function formatPhoneNumber(number) {
+    const cleaned = number.replace(/\D/g, '');
+    return `${cleaned}@c.us`;
+}
+
 // Set para búsqueda O(1)
 const targetNumbers = new Set([
-    '573225932684@c.us',
-    '573108105885@c.us',
-    '573116817593@c.us',
-    '573114979743@c.us',
-    '573142126744@c.us',
-    '573012406420@c.us',
-    '573212315764@c.us',
-    '573228635363@c.us',
-    '573144181106@c.us',
-    '573209133924@c.us',
-    '573102901160@c.us',
-    '573142126744@c.us'
+    formatPhoneNumber('573225932684'),
+    formatPhoneNumber('573108105885'),
+    formatPhoneNumber('573116817593'),
+    formatPhoneNumber('573114979743'),
+    formatPhoneNumber('573142126744'),
+    formatPhoneNumber('573012406420'),
+    formatPhoneNumber('573212315764'),
+    formatPhoneNumber('573228635363'),
+    formatPhoneNumber('573144181106'),
+    formatPhoneNumber('573209133924'),
+    formatPhoneNumber('573102901160'),
+    formatPhoneNumber('573142126744')
 ]);
+
+// Función para verificar números
+function isTargetNumber(number) {
+    console.log('🔍 Verificando número:', number);
+    const formatted = number.includes('@c.us') ? number : formatPhoneNumber(number);
+    const isTarget = targetNumbers.has(formatted);
+    console.log(`${isTarget ? '✅' : '❌'} Número ${formatted} ${isTarget ? 'es' : 'no es'} objetivo`);
+    return isTarget;
+}
 
 // Variables para gestionar el estado
 let isShuttingDown = false;
@@ -126,13 +141,31 @@ async function initializeWhatsApp() {
     // Manejador de mensajes optimizado
     client.on('message', async (message) => {
         try {
+            console.log('📩 Mensaje recibido:', {
+                from: message.from,
+                isGroup: message.from.endsWith('@g.us'),
+                author: message.author || 'N/A'
+            });
+
             const senderId = message.from;
             const isGroup = senderId.endsWith('@g.us');
             const actualSender = isGroup ? message.author : senderId;
 
+            console.log('🎯 Verificando sender:', {
+                actualSender,
+                isInTargetNumbers: isTargetNumber(isGroup ? message.author : senderId),
+                isBlocked: isSystemBlocked()
+            });
+
             // Verificación rápida O(1)
-            if (!targetNumbers.has(isGroup ? message.author : senderId)) return;
-            if (isSystemBlocked()) return;
+            if (!isTargetNumber(isGroup ? message.author : senderId)) {
+                console.log('❌ Número no está en la lista de objetivos');
+                return;
+            }
+            if (isSystemBlocked()) {
+                console.log('🔒 Sistema bloqueado');
+                return;
+            }
 
             // Manejo de respuestas en paralelo
             if (message.hasQuotedMsg) {
@@ -143,7 +176,7 @@ async function initializeWhatsApp() {
                 const respondedNumbers = responseCache.respondedMessages.get(originalMessageId) || new Set();
 
                 // Si el mensaje ya ha sido respondido por otro número objetivo
-                if (respondedNumbers.size > 0 && targetNumbers.has(actualSender)) {
+                if (respondedNumbers.size > 0 && isTargetNumber(actualSender)) {
                     Object.assign(responseCache, {
                         isBlocked: true,
                         lastRespondedNumber: actualSender,
@@ -159,7 +192,7 @@ async function initializeWhatsApp() {
                 responseCache.respondedMessages.set(originalMessageId, respondedNumbers);
 
                 // Lógica original de bloqueo por primer respondedor
-                if (quotedMsg.fromMe && targetNumbers.has(actualSender)) {
+                if (quotedMsg.fromMe && isTargetNumber(actualSender)) {
                     if (responseCache.pendingResponses.has(actualSender)) {
                         Object.assign(responseCache, {
                             isBlocked: true,
@@ -175,34 +208,32 @@ async function initializeWhatsApp() {
 
             // Respuesta instantánea para primer mensaje
             if (!responseCache.initialResponses.has(actualSender)) {
-                // Envío inmediato sin esperar confirmación
-                Promise.all([
-                    message.reply(FAST_RESPONSE),
-                    new Promise(resolve => {
-                        responseCache.initialResponses.add(actualSender);
-                        responseCache.pendingResponses.add(actualSender);
-                        sendNotificationToAdmin(message, isGroup, 'response');
-                        resolve();
-                    })
-                ]).catch(() => {
+                console.log('🤖 Enviando respuesta rápida a:', actualSender);
+                try {
+                    await message.reply(FAST_RESPONSE);
+                    console.log('✅ Respuesta enviada exitosamente');
+                    responseCache.initialResponses.add(actualSender);
+                    responseCache.pendingResponses.add(actualSender);
+                    await sendNotificationToAdmin(message, isGroup, 'response');
+                } catch (replyError) {
+                    console.error('❌ Error al enviar respuesta:', replyError);
                     responseCache.pendingResponses.delete(actualSender);
-                });
+                }
             }
 
-            // Incrementar contador de mensajes
             botStatus.totalMessages++;
+            console.log('📊 Total mensajes procesados:', botStatus.totalMessages);
         } catch (error) {
             console.error('Error en manejo de mensajes:', error);
         }
     });
 
-    // Eventos existentes de WhatsApp
+    // Eventos de WhatsApp
     client.on('qr', async (qr) => {
         console.log('Nuevo código QR generado');
         botStatus.lastQRGenerated = new Date();
 
         try {
-            // Generar imagen QR
             const qrImageBuffer = await qrcode.toBuffer(qr, {
                 type: 'png',
                 margin: 4,
@@ -210,7 +241,6 @@ async function initializeWhatsApp() {
                 errorCorrectionLevel: 'H'
             });
 
-            // Enviar QR por Telegram si está configurado
             if (telegramBot && AUTHORIZED_USER_ID) {
                 await telegramBot.sendPhoto(
                     AUTHORIZED_USER_ID,
@@ -228,22 +258,19 @@ async function initializeWhatsApp() {
         botStatus.whatsappConnected = true;
         isClientReady = true;
 
-        // Notificar por Telegram cuando esté listo
         if (telegramBot && AUTHORIZED_USER_ID) {
             telegramBot.sendMessage(
                 AUTHORIZED_USER_ID,
                 '✅ WhatsApp Bot conectado y listo para usar!'
             ).catch(console.error);
 
-            // Enviar mensaje al número de admin
             setTimeout(() => {
                 client.sendMessage(ADMIN_NUMBER, '🤖 Bot Activo').catch(() => {});
             }, 0);
         }
     });
 
-    // Otros eventos existentes...
-    client.on('authenticated', (session) => {
+    client.on('authenticated', () => {
         console.log('👍 Autenticación completada');
     });
 
@@ -252,7 +279,6 @@ async function initializeWhatsApp() {
         botStatus.whatsappConnected = false;
         isClientReady = false;
 
-        // Notificar por Telegram
         if (telegramBot && AUTHORIZED_USER_ID) {
             telegramBot.sendMessage(
                 AUTHORIZED_USER_ID,
@@ -266,7 +292,6 @@ async function initializeWhatsApp() {
         botStatus.whatsappConnected = false;
         isClientReady = false;
 
-        // Notificar por Telegram
         if (telegramBot && AUTHORIZED_USER_ID) {
             telegramBot.sendMessage(
                 AUTHORIZED_USER_ID,
@@ -274,19 +299,16 @@ async function initializeWhatsApp() {
             ).catch(console.error);
         }
 
-        // Intentar reconectar
         setTimeout(() => client.initialize(), 0);
     });
 
     try {
-        // Inicializar cliente
         await client.initialize();
         console.log('🚀 Cliente WhatsApp inicializado');
         botStatus.startTime = new Date();
     } catch (initError) {
         console.error('❌ Error al inicializar cliente:', initError);
 
-        // Notificar por Telegram
         if (telegramBot && AUTHORIZED_USER_ID) {
             telegramBot.sendMessage(
                 AUTHORIZED_USER_ID,
@@ -301,10 +323,23 @@ async function initializeWhatsApp() {
 try {
     telegramBot = new TelegramBot(TELEGRAM_TOKEN, {
         polling: true,
-        filepath: false
+        filepath: false,
+        pollingOptions: {
+            timeout: 50,
+            limit: 100,
+            retryTimeout: 5000
+        }
     });
 
-    // Comando /start - Inicia o reinicia el bot de WhatsApp
+    // Manejar errores de polling
+    telegramBot.on('polling_error', (error) => {
+        console.log('Error de Telegram polling:', error.message);
+        setTimeout(() => {
+            telegramBot.startPolling();
+        }, 5000);
+    });
+
+    // Comando /start
     telegramBot.onText(/\/start/, async (msg) => {
         if (msg.from.id.toString() !== AUTHORIZED_USER_ID) {
             return telegramBot.sendMessage(msg.chat.id, '❌ No estás autorizado para usar este bot.');
@@ -320,7 +355,7 @@ try {
         }
     });
 
-    // Comando /stop - Detiene el bot de WhatsApp
+    // Comando /stop
     telegramBot.onText(/\/stop/, async (msg) => {
         if (msg.from.id.toString() !== AUTHORIZED_USER_ID) {
             return telegramBot.sendMessage(msg.chat.id, '❌ No estás autorizado para usar este bot.');
